@@ -11,6 +11,7 @@ type Message = {
   role: Role
   text: string
   meta: string
+  loading?: boolean
 }
 
 type Rubric = {
@@ -108,16 +109,25 @@ function App() {
   const handleSend = async () => {
     if (!essayText && !essayFile) return
     setIsSending(true)
-    const rubricLabel = selectedRubric?.name ?? 'Custom rubric'
-    const userPayload = [
-      essayText ? `Essay:\n${essayText.slice(0, 1200)}${essayText.length > 1200 ? '...' : ''}` : '',
-      essayFile ? `\nAttached file: ${essayFile.name}` : '',
-      `\nRubric: ${rubricLabel}`,
-    ].join('')
+    const loaderId = crypto.randomUUID()
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: 'user' as const,
+      meta: 'Teacher',
+      text: [
+        essayText ? `Essay:\n${essayText.slice(0, 1200)}${essayText.length > 1200 ? '...' : ''}` : '',
+        essayFile ? `\nAttached file: ${essayFile.name}` : '',
+        `\nRubric: ${selectedRubric?.name ?? 'Custom rubric'}`,
+      ]
+        .join('')
+        .trim(),
+    }
 
+    const rubricLabel = selectedRubric?.name ?? 'Custom rubric'
     setMessages((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: 'user', meta: 'Teacher', text: userPayload.trim() },
+      userMessage,
+      { id: loaderId, role: 'agent', meta: `Grading with ${rubricLabel}`, text: '', loading: true },
     ])
 
     try {
@@ -129,12 +139,22 @@ function App() {
       })
 
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((m) => m.id !== loaderId),
         {
           id: crypto.randomUUID(),
           role: 'agent',
           text: response.reply,
           meta: `Using ${response.rubricUsed}`,
+        },
+      ])
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== loaderId),
+        {
+          id: crypto.randomUUID(),
+          role: 'agent',
+          text: err?.message || 'Failed to grade essay.',
+          meta: 'Error',
         },
       ])
     } finally {
@@ -432,17 +452,73 @@ function MessageList({ messages }: { messages: Message[] }) {
   return (
     <div className="messages" ref={listRef}>
       {messages.map((m) => (
-        <div key={m.id} className={`message ${m.role === 'user' ? 'user' : 'agent'}`}>
+        <div key={m.id} className={`message ${m.role === 'user' ? 'user' : 'agent'} ${m.loading ? 'loading' : ''}`}>
           <div className="meta">
             <span>{m.role === 'user' ? 'Teacher' : 'ParaPal'}</span>
             <span>•</span>
             <span>{m.meta}</span>
           </div>
-          <div className="body">{m.text}</div>
+          <div className="body">{m.loading ? <span className="spinner" aria-label="Loading" /> : renderMessageContent(m)}</div>
         </div>
       ))}
     </div>
   )
+}
+
+function renderMessageContent(message: Message) {
+  if (message.loading) return <span className="spinner" aria-label="Loading" />
+  if (!message.text) return null
+
+  if (message.role === 'agent') {
+    const lines = message.text.split('\n')
+    const headerLine = lines[0] || ''
+    const remainder = lines.slice(1)
+
+    const tokenMatches = headerLine.match(/\[([^\]]+)\]/g) || []
+    const scores = tokenMatches
+      .map((token) => token.replace(/\[|\]/g, ''))
+      .map((pair) => {
+        const [label, score] = pair.split(':').map((s) => s.trim())
+        return { label, score }
+      })
+      .filter((s) => s.label)
+
+    const evidenceStart = remainder.findIndex((l) => !l.trim())
+    const feedbackLines =
+      evidenceStart === -1 ? remainder : remainder.slice(0, evidenceStart)
+    const feedbackText = feedbackLines.join('\n').trim()
+    const evidenceLines =
+      evidenceStart === -1 ? [] : remainder.slice(evidenceStart + 1).filter((l) => l.trim())
+
+    if (!scores.length && !feedbackText.trim() && !evidenceLines.length) {
+      return <pre className="plain-text">{message.text}</pre>
+    }
+
+    return (
+      <>
+        {scores.length ? (
+          <div className="score-grid">
+            {scores.map((s, idx) => (
+              <div key={`${s.label}-${idx}`} className="score-card">
+                <div className="score-label">{s.label}</div>
+                <div className="score-value">{s.score}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {feedbackText && <p className="feedback-text">{feedbackText}</p>}
+        {evidenceLines.length ? (
+          <ul className="evidence-list">
+            {evidenceLines.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </>
+    )
+  }
+
+  return <pre className="plain-text">{message.text}</pre>
 }
 
 export default App

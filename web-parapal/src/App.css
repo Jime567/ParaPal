@@ -16,7 +16,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  max-width: 1200px;
+  max-width: 1500px;
   margin: 0 auto;
   min-height: 100vh;
 }
@@ -318,13 +318,17 @@
 }
 
 .message.user {
-  background: rgba(122, 209, 255, 0.08);
-  border-color: rgba(122, 209, 255, 0.2);
+  background: rgba(122, 209, 255, 0.18);
+  border-color: rgba(122, 209, 255, 0.4);
 }
 
 .message.agent {
-  background: rgba(157, 123, 255, 0.08);
-  border-color: rgba(157, 123, 255, 0.2);
+  background: rgba(255, 187, 120, 0.18);
+  border-color: rgba(255, 187, 120, 0.45);
+}
+
+.message.loading {
+  align-items: center;
 }
 
 .message .meta {
@@ -340,6 +344,70 @@
 .message .body {
   color: var(--text);
   line-height: 1.6;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.score-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.score-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.score-value {
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.feedback-text {
+  margin: 0 0 8px;
+  white-space: pre-line;
+}
+
+.evidence-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+}
+
+.plain-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .chat-input {
