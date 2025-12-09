@@ -1,7 +1,12 @@
-// Placeholder handlers for future backend integration.
-// These keep the UI responsive while API wiring is pending.
+// Handlers for backend integration with Bedrock via API Gateway.
+// Now secured so only authenticated Cognito users can query the grader.
 
+import { fetchAuthSession } from 'aws-amplify/auth'
 import { delay } from './utils'
+
+// Full invoke URL for your API Gateway endpoint
+const API_BASE_URL =
+  'https://v7z7z1jjmc.execute-api.us-east-1.amazonaws.com/prod/grade'
 
 type SendArgs = {
   prompt: string
@@ -15,22 +20,35 @@ export async function sendMessage({ prompt, essayText, rubric, selectedCriteria 
   void prompt
   void selectedCriteria
 
+  // 🔐 Get Cognito ID token so API Gateway's Cognito authorizer can validate the user
+  const session = await fetchAuthSession()
+  const idToken = session.tokens?.idToken?.toString()
+
+  if (!idToken) {
+    throw new Error('Not authenticated. Please sign in to grade essays.')
+  }
+
   const payload = {
     essay_text: essayText,
-    rubric: rubric?.name || 'Grade on clarity, organization, grammar, and argument strength from 1–5.',
+    rubric:
+      rubric?.name ||
+      'Grade on clarity, organization, grammar, and argument strength from 1–5.',
   }
 
   console.log('Grading API request payload:', payload)
 
-  const res = await fetch('https://v7z7z1jjmc.execute-api.us-east-1.amazonaws.com/prod/grade', {
+  const res = await fetch(API_BASE_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // 👇 This is what API Gateway’s Cognito/JWT authorizer checks
+      Authorization: `Bearer ${idToken}`,
+    },
     body: JSON.stringify(payload),
   })
 
-  console.log('Grading API response:', res
+  console.log('Grading API response:', res)
 
-  )
   const bodyText = await res.text()
 
   const parsed = safeJson(bodyText)
