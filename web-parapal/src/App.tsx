@@ -4,6 +4,9 @@ import { extractTextFromPdf } from './pdf'
 import logo from './assets/parapal.png'
 import './App.css'
 
+import AuthPanel from './components/AuthPanel'
+import { getCurrentCognitoUser } from './auth'
+
 type Role = 'user' | 'agent'
 
 type Message = {
@@ -55,10 +58,28 @@ function App() {
   const [essayStatus, setEssayStatus] = useState('')
   const [isSending, setIsSending] = useState(false)
 
+  // 👇 NEW: authenticated user email/username (null if logged out)
+  const [authedUser, setAuthedUser] = useState<string | null>(null)
+
   const selectedRubric = useMemo(
     () => rubrics.find((r) => r.id === selectedRubricId) || rubrics[0],
     [rubrics, selectedRubricId],
   )
+
+  // 👇 NEW: on initial load, check if Cognito already has a session
+  useEffect(() => {
+    ;(async () => {
+      const user = await getCurrentCognitoUser()
+      if (user) {
+        setAuthedUser(user.email)
+      }
+    })()
+  }, [])
+
+  // 👇 NEW: this is called by AuthPanel when user logs in/out
+  const handleAuthChange = (email: string | null) => {
+    setAuthedUser(email)
+  }
 
   const handleAddRubric = async (newRubric: Rubric) => {
     setRubrics((prev) => [...prev, newRubric])
@@ -176,31 +197,44 @@ function App() {
         <div>
           <p className="eyebrow">ParaPal</p>
           <h1 className="top-title">Essay Grader</h1>
+          {authedUser && <p className="muted">Signed in as {authedUser}</p>}
         </div>
       </header>
 
       <main>
-        {activeScreen === 'rubrics' ? (
-          <RubricManager
-            rubrics={rubrics}
-            onAddRubric={handleAddRubric}
-            onDelete={handleDeleteRubric}
-            onUploadFile={handleRubricUpload}
-            status={status}
-          />
+        {authedUser ? (
+          activeScreen === 'rubrics' ? (
+            <RubricManager
+              rubrics={rubrics}
+              onAddRubric={handleAddRubric}
+              onDelete={handleDeleteRubric}
+              onUploadFile={handleRubricUpload}
+              status={status}
+            />
+          ) : (
+            <ChatWorkspace
+              rubrics={rubrics}
+              messages={messages}
+              selectedRubricId={selectedRubricId}
+              onRubricChange={setSelectedRubricId}
+              essayFile={essayFile}
+              onEssayUpload={handleEssayUpload}
+              onSend={handleSend}
+              isSending={isSending}
+              essayText={essayText}
+              essayStatus={essayStatus}
+            />
+          )
         ) : (
-          <ChatWorkspace
-            rubrics={rubrics}
-            messages={messages}
-            selectedRubricId={selectedRubricId}
-            onRubricChange={setSelectedRubricId}
-            essayFile={essayFile}
-            onEssayUpload={handleEssayUpload}
-            onSend={handleSend}
-            isSending={isSending}
-            essayText={essayText}
-            essayStatus={essayStatus}
-          />
+          <section className="panel chat-panel">
+            <div className="panel-header">
+              <h2>Welcome to ParaPal</h2>
+              <div className="badge">Sign in required</div>
+            </div>
+            <p className="muted">
+              Please sign up or log in from the menu (top-left) to grade essays with ParaPal.
+            </p>
+          </section>
         )}
       </main>
 
@@ -238,6 +272,11 @@ function App() {
               <span>Standards & Rubrics</span>
               <small>Upload and curate grading criteria</small>
             </button>
+          </div>
+
+          {/* Auth UI lives in the drawer and keeps App in sync */}
+          <div style={{ marginTop: '1.5rem' }}>
+            <AuthPanel onAuthChange={handleAuthChange} />
           </div>
         </aside>
       </div>
@@ -319,24 +358,24 @@ function RubricManager({
         <p className="status">Stored locally until backend wiring is ready.</p>
       </div>
 
-          <div className="rubric-list">
-            {rubrics.map((rubric) => (
-              <div className="rubric-card" key={rubric.id}>
-                <header>
-                  <div>
-                    <p className="rubric-name">{rubric.name}</p>
-                    <p className="status">{rubric.description || 'No description'}</p>
-                  </div>
-                  <button className="ghost" onClick={() => onDelete(rubric.id)}>
-                    Remove
-                  </button>
-                </header>
-                <p className="status">Rubric stored locally.</p>
+      <div className="rubric-list">
+        {rubrics.map((rubric) => (
+          <div className="rubric-card" key={rubric.id}>
+            <header>
+              <div>
+                <p className="rubric-name">{rubric.name}</p>
+                <p className="status">{rubric.description || 'No description'}</p>
               </div>
-            ))}
+              <button className="ghost" onClick={() => onDelete(rubric.id)}>
+                Remove
+              </button>
+            </header>
+            <p className="status">Rubric stored locally.</p>
           </div>
-        </section>
-      )
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function ChatWorkspace({
@@ -397,7 +436,8 @@ function ChatWorkspace({
           </div>
           <div className="upload-box">
             <div className="muted">
-              Tip: switch rubrics without losing your chat history. The selected rubric will be sent with the essay to the AI grader.
+              Tip: switch rubrics without losing your chat history. The selected rubric will be sent
+              with the essay to the AI grader.
             </div>
           </div>
         </div>
@@ -452,13 +492,20 @@ function MessageList({ messages }: { messages: Message[] }) {
   return (
     <div className="messages" ref={listRef}>
       {messages.map((m) => (
-        <div key={m.id} className={`message ${m.role === 'user' ? 'user' : 'agent'} ${m.loading ? 'loading' : ''}`}>
+        <div
+          key={m.id}
+          className={`message ${m.role === 'user' ? 'user' : 'agent'} ${
+            m.loading ? 'loading' : ''
+          }`}
+        >
           <div className="meta">
             <span>{m.role === 'user' ? 'Teacher' : 'ParaPal'}</span>
             <span>•</span>
             <span>{m.meta}</span>
           </div>
-          <div className="body">{m.loading ? <span className="spinner" aria-label="Loading" /> : renderMessageContent(m)}</div>
+          <div className="body">
+            {m.loading ? <span className="spinner" aria-label="Loading" /> : renderMessageContent(m)}
+          </div>
         </div>
       ))}
     </div>
@@ -484,8 +531,7 @@ function renderMessageContent(message: Message) {
       .filter((s) => s.label)
 
     const evidenceStart = remainder.findIndex((l) => !l.trim())
-    const feedbackLines =
-      evidenceStart === -1 ? remainder : remainder.slice(0, evidenceStart)
+    const feedbackLines = evidenceStart === -1 ? remainder : remainder.slice(0, evidenceStart)
     const feedbackText = feedbackLines.join('\n').trim()
     const evidenceLines =
       evidenceStart === -1 ? [] : remainder.slice(evidenceStart + 1).filter((l) => l.trim())
