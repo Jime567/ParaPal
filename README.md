@@ -10,7 +10,7 @@ npm run dev
 ```
 
 ### Dependencies For Install To Run Locally
-'''
+```
 npm install aws-amplify
 npm install aws-jwt-verify
-'''
+```
