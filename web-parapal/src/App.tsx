@@ -30,12 +30,7 @@ const starterRubrics: Rubric[] = [
     id: 'r1',
     name: 'Narrative Writing (Grade 4)',
     description: 'Checks sequence, detail, and a satisfying ending.',
-    criteria: [],
-  },
-  {
-    id: 'r2',
-    name: 'Opinion Writing (Grade 5)',
-    description: 'Focuses on stance, reasons, and evidence.',
+    content: 'Write narrative pieces to develop real or imagined experiences or events using effective technique, descriptive details, clear event sequences, and provide a resolution. a. Orient the reader by establishing a situation and introducing a narrator and/or characters; organize an event sequence that unfolds naturally. b. Use dialogue and description to develop experiences and events or show the responses of characters to situations. c. Use a variety of transitional words and phrases to manage the sequence of events. d. Use concrete words, phrases, complex sentences, and sensory details to convey experiences and events precisely. e. Use appropriate conventions when writing including text cohesion, sentence structure, and phrasing.',
     criteria: [],
   },
 ]
@@ -61,6 +56,9 @@ function App() {
 
   // 👇 NEW: authenticated user email/username (null if logged out)
   const [authedUser, setAuthedUser] = useState<string | null>(null)
+  
+  // 👇 Temporary rubric content from file upload (before saving)
+  const [uploadedRubricContent, setUploadedRubricContent] = useState<string>('')
 
   const selectedRubric = useMemo(
     () => rubrics.find((r) => r.id === selectedRubricId) || rubrics[0],
@@ -107,7 +105,7 @@ function App() {
       try {
         const text = await extractTextFromPdf(file)
         rubricContent = text || ''
-        setStatus(text ? 'Rubric text extracted' : 'No text found in PDF')
+        setStatus(text ? 'Rubric text extracted. Fill in the fields below and click "Save rubric".' : 'No text found in PDF')
       } catch (err) {
         console.error(err)
         setStatus('Could not read PDF. Please try another file.')
@@ -116,20 +114,14 @@ function App() {
       }
     } else {
       rubricContent = await file.text()
+      setStatus('Rubric content loaded. Fill in the fields below and click "Save rubric".')
     }
     
-    // Create new rubric with extracted content
-    const newRubric: Rubric = {
-      id: `r${Date.now()}`,
-      name: file.name.replace(/\.[^/.]+$/, ''), // Remove file extension
-      description: `Uploaded from ${file.name}`,
-      content: rubricContent,
-    }
-    
+    // Store content temporarily until user clicks "Save rubric"
+    setUploadedRubricContent(rubricContent)
     await handlers.uploadRubricFile(file)
-    handleAddRubric(newRubric)
-    setStatus(`Rubric added: ${newRubric.name}`)
-    setTimeout(() => setStatus(''), 1800)
+    
+    setTimeout(() => setStatus(''), 3000)
   }
 
   const handleEssayUpload = async (file: File | undefined | null) => {
@@ -260,6 +252,8 @@ function App() {
               onDelete={handleDeleteRubric}
               onUploadFile={handleRubricUpload}
               status={status}
+              uploadedContent={uploadedRubricContent}
+              onClearUploadedContent={() => setUploadedRubricContent('')}
             />
           ) : (
             <ChatWorkspace
@@ -340,27 +334,46 @@ function RubricManager({
   onDelete,
   onUploadFile,
   status,
+  uploadedContent,
+  onClearUploadedContent,
 }: {
   rubrics: Rubric[]
   onAddRubric: (rubric: Rubric) => void
   onDelete: (id: string) => void
   onUploadFile: (file: File | undefined | null) => void
   status: string
+  uploadedContent: string
+  onClearUploadedContent: () => void
 }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [validationError, setValidationError] = useState('')
 
   const handleCreate = () => {
-    if (!name.trim()) return
+    // Validate all required fields
+    if (!name.trim() || !description.trim() || !uploadedContent.trim()) {
+      const missingFields = []
+      if (!name.trim()) missingFields.push('name')
+      if (!description.trim()) missingFields.push('description')
+      if (!uploadedContent.trim()) missingFields.push('content')
+      
+      setValidationError(`Please provide: ${missingFields.join(', ')}`)
+      setTimeout(() => setValidationError(''), 3000)
+      return
+    }
+    
     const newRubric: Rubric = {
       id: `rubric-${crypto.randomUUID()}`,
       name,
       description,
+      content: uploadedContent,
       criteria: [],
     }
     onAddRubric(newRubric)
     setName('')
     setDescription('')
+    onClearUploadedContent()
+    setValidationError('')
   }
 
   return (
@@ -405,7 +418,9 @@ function RubricManager({
         <button className="button" onClick={handleCreate}>
           Save rubric
         </button>
-        <p className="status">Stored locally until backend wiring is ready.</p>
+        <p className="status">
+          {validationError || 'Stored locally until backend wiring is ready.'}
+        </p>
       </div>
 
       <div className="rubric-list">
