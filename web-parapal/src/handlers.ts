@@ -73,37 +73,34 @@ function safeJson(text: string) {
 }
 
 function formatGradeResponse(parsed: any): string | null {
-  const content =
-    parsed?.grade?.choices?.[0]?.message?.content ??
-    parsed?.message ??
-    parsed?.result ??
-    parsed
+  // The API response structure is: { id: string, grade: { category_scores, overall_score, feedback, evidence } }
+  const data = parsed?.grade ?? parsed
 
-  if (typeof content !== 'string') return null
-
-  const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  const jsonBlock = fencedMatch ? fencedMatch[1] : content
-
-  const data = safeJson(jsonBlock)
   if (!data || typeof data !== 'object') {
-    return content.trim()
+    return null
   }
 
   const overall = data.overall_score
-  const categories = data.category_scores || data.categoryScores || {}
+  const categoryScores = data.category_scores || data.categoryScores || []
   const feedback = data.feedback || data.comments
-  const evidence: string[] = Array.isArray(data.evidence) ? data.evidence : []
+  const evidence = Array.isArray(data.evidence) ? data.evidence : []
 
   const header: string[] = []
   if (overall !== undefined) {
     header.push(`[Overall: ${overall}]`)
   }
-  const categoryKeys = Object.keys(categories)
-  for (const key of categoryKeys) {
-    const label = key
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (c: string) => c.toUpperCase())
-    header.push(`[${label}: ${categories[key]}]`)
+
+  // category_scores is an array of objects: [{ category: string, score: number }, ...]
+  if (Array.isArray(categoryScores)) {
+    for (const item of categoryScores) {
+      if (item.category && item.score !== undefined) {
+        // Shorten long category names for display
+        const label = item.category.length > 50 
+          ? item.category.substring(0, 47) + '...'
+          : item.category
+        header.push(`[${label}: ${item.score}]`)
+      }
+    }
   }
 
   const lines: string[] = []
@@ -111,14 +108,26 @@ function formatGradeResponse(parsed: any): string | null {
     lines.push(header.join(' '))
   }
   if (feedback) {
+    lines.push('')
     lines.push(feedback)
   }
+  
+  // evidence is an array of objects: [{ quote: string, explanation: string }, ...]
   if (evidence.length) {
-    lines.push('') // empty line between feedback and evidence list
-    evidence.forEach((item) => lines.push(item))
+    lines.push('')
+    lines.push('Evidence:')
+    evidence.forEach((item: any) => {
+      if (typeof item === 'string') {
+        // Fallback for old format
+        lines.push(item)
+      } else if (item.quote && item.explanation) {
+        // Combine quote and explanation on one line so it stays together in the UI
+        lines.push(`"${item.quote}" — ${item.explanation}`)
+      }
+    })
   }
 
-  return lines.length ? lines.join('\n') : content.trim()
+  return lines.length ? lines.join('\n') : null
 }
 
 export async function uploadRubricFile(file: File) {

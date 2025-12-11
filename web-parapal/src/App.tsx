@@ -194,10 +194,32 @@ function App() {
         <button className="logo-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">
           <img src={logo} alt="ParaPal logo" className="logo-img" />
         </button>
-        <div>
-          <p className="eyebrow">ParaPal</p>
-          <h1 className="top-title">Essay Grader</h1>
-          {authedUser && <p className="muted">Signed in as {authedUser}</p>}
+        <div className="header-content">
+          <div className="header-title-section">
+            <p className="eyebrow">ParaPal</p>
+            <h1 className="top-title">Essay Grader</h1>
+            {authedUser && <p className="muted">Signed in as {authedUser}</p>}
+          </div>
+          {authedUser ? (
+            <nav className="header-tabs">
+              <button
+                className={`tab-btn ${activeScreen === 'chat' ? 'active' : ''}`}
+                onClick={() => setActiveScreen('chat')}
+              >
+                Chat & Grade
+              </button>
+              <button
+                className={`tab-btn ${activeScreen === 'rubrics' ? 'active' : ''}`}
+                onClick={() => setActiveScreen('rubrics')}
+              >
+                Standards & Rubrics
+              </button>
+            </nav>
+          ) : (
+            <button className="signin-btn" onClick={() => setNavOpen(true)}>
+              Log In or Sign Up
+            </button>
+          )}
         </div>
       </header>
 
@@ -407,7 +429,6 @@ function ChatWorkspace({
     <section className="panel chat-panel">
       <div className="panel-header">
         <h2>Chat & Grade</h2>
-        <div className="badge">Ready</div>
       </div>
       <div className="chat-grid">
         <div className="chat-shell">
