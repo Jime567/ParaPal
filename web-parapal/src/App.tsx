@@ -5,7 +5,7 @@ import logo from './assets/parapal.png'
 import './App.css'
 
 import AuthPanel from './components/AuthPanel'
-import { getCurrentCognitoUser } from './auth'
+import { getCurrentCognitoUser, logoutUser } from './auth'
 
 type Role = 'user' | 'agent'
 
@@ -78,6 +78,16 @@ function App() {
   // 👇 NEW: this is called by AuthPanel when user logs in/out
   const handleAuthChange = (email: string | null) => {
     setAuthedUser(email)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+      setAuthedUser(null)
+      setNavOpen(false)
+    } catch (err) {
+      console.error('Logout failed:', err)
+    }
   }
 
   const handleAddRubric = async (newRubric: Rubric) => {
@@ -221,20 +231,25 @@ function App() {
             {authedUser && <p className="muted">Signed in as {authedUser}</p>}
           </div>
           {authedUser ? (
-            <nav className="header-tabs">
-              <button
-                className={`tab-btn ${activeScreen === 'chat' ? 'active' : ''}`}
-                onClick={() => setActiveScreen('chat')}
-              >
-                Chat & Grade
+            <div className="header-actions">
+              <nav className="header-tabs">
+                <button
+                  className={`tab-btn ${activeScreen === 'chat' ? 'active' : ''}`}
+                  onClick={() => setActiveScreen('chat')}
+                >
+                  Chat & Grade
+                </button>
+                <button
+                  className={`tab-btn ${activeScreen === 'rubrics' ? 'active' : ''}`}
+                  onClick={() => setActiveScreen('rubrics')}
+                >
+                  Standards & Rubrics
+                </button>
+              </nav>
+              <button className="logout-btn" onClick={handleLogout}>
+                Log Out
               </button>
-              <button
-                className={`tab-btn ${activeScreen === 'rubrics' ? 'active' : ''}`}
-                onClick={() => setActiveScreen('rubrics')}
-              >
-                Standards & Rubrics
-              </button>
-            </nav>
+            </div>
           ) : (
             <button className="signin-btn" onClick={() => setNavOpen(true)}>
               Log In or Sign Up
@@ -320,7 +335,7 @@ function App() {
 
           {/* Auth UI lives in the drawer and keeps App in sync */}
           <div style={{ marginTop: '1.5rem' }}>
-            <AuthPanel onAuthChange={handleAuthChange} />
+            <AuthPanel onAuthChange={handleAuthChange} isLoggedIn={authedUser !== null} />
           </div>
         </aside>
       </div>
