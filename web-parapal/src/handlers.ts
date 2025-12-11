@@ -11,8 +11,23 @@ const API_BASE_URL =
 type SendArgs = {
   prompt: string
   essayText: string
-  rubric: { name: string }
+  rubric: { name: string; content?: string }
   selectedCriteria?: string[]
+}
+
+// Helper to format rubric display name - prefer name, otherwise truncate content
+function getRubricDisplayName(rubric: { name?: string; content?: string } | string): string {
+  if (typeof rubric === 'string') {
+    // If it's just a string, truncate it
+    return rubric.length > 60 ? rubric.substring(0, 57) + '...' : rubric
+  }
+  if (rubric?.name) {
+    return rubric.name
+  }
+  if (rubric?.content) {
+    return rubric.content.length > 60 ? rubric.content.substring(0, 57) + '...' : rubric.content
+  }
+  return 'Custom rubric'
 }
 
 export async function sendMessage({ prompt, essayText, rubric, selectedCriteria }: SendArgs) {
@@ -31,8 +46,8 @@ export async function sendMessage({ prompt, essayText, rubric, selectedCriteria 
   const payload = {
     essay_text: essayText,
     rubric:
-      rubric?.name ||
-      'Grade on clarity, organization, grammar, and argument strength from 1–5.',
+      rubric?.content ||
+      'Grade on clarity, organization, grammar, and argument strength from 0-100.',
   }
 
   console.log('Grading API request payload:', payload)
@@ -52,15 +67,67 @@ export async function sendMessage({ prompt, essayText, rubric, selectedCriteria 
   const bodyText = await res.text()
 
   const parsed = safeJson(bodyText)
+  
+  // Check if the response contains an error in the grade object (could be 200 or 500)
+  if (parsed?.grade?.raw_output && parsed?.grade?.error) {
+    const rawOutput = parsed.grade.raw_output
+    const parsedRaw = typeof rawOutput === 'string' ? safeJson(rawOutput) : rawOutput
+    
+    // Format the error message with the error details
+    const lines: string[] = []
+    lines.push('⚠️ Grading Error')
+    lines.push('')
+    lines.push(`Error: ${parsed.grade.error}`)
+    lines.push('')
+    lines.push('Raw Output:')
+    
+    const reply = formatGradeResponse(parsedRaw)
+    if (reply) {
+      lines.push(reply)
+    } else if (typeof parsedRaw === 'string') {
+      lines.push(parsedRaw)
+    } else {
+      lines.push(JSON.stringify(parsedRaw, null, 2))
+    }
+    
+    return {
+      reply: lines.join('\n'),
+      rubricUsed: getRubricDisplayName(rubric),
+    }
+  }
+  
+  // If status is 500 but we have raw_output in the grade, still try to display it
+  if (!res.ok && res.status === 500 && parsed?.grade?.raw_output) {
+    const rawOutput = parsed.grade.raw_output
+    const parsedRaw = typeof rawOutput === 'string' ? safeJson(rawOutput) : rawOutput
+    const reply = formatGradeResponse(parsedRaw) || rawOutput
+    return {
+      reply,
+      rubricUsed: getRubricDisplayName(rubric),
+    }
+  }
+  
   if (!res.ok) {
-    throw new Error(parsed?.error || `Request failed with status ${res.status}`)
+    let errorMessage = `Request failed with status ${res.status}`
+    
+    // Check if there's an error message in the grade object
+    if (parsed?.grade?.error) {
+      errorMessage += `\n\n⚠️ Error: ${parsed.grade.error}`
+    }
+    
+    // Also include the top-level error if it exists
+    if (parsed?.error) {
+      errorMessage += `\n\n⚠️ Error: ${parsed.error}`
+    }
+    
+    throw new Error(errorMessage)
   }
 
   const reply = formatGradeResponse(parsed) || bodyText
 
   return {
     reply,
-    rubricUsed: payload.rubric,
+    rubricUsed: getRubricDisplayName(rubric),
   }
 }
 

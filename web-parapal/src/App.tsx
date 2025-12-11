@@ -21,6 +21,7 @@ type Rubric = {
   id: string
   name: string
   description: string
+  content?: string  // Extracted text from uploaded PDF
   criteria?: string[]
 }
 
@@ -98,10 +99,37 @@ function App() {
 
   const handleRubricUpload = async (file: File | undefined | null) => {
     if (!file) return
-    setStatus('Uploading...')
+    setStatus('Extracting rubric...')
+    
+    let rubricContent = ''
+    
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      try {
+        const text = await extractTextFromPdf(file)
+        rubricContent = text || ''
+        setStatus(text ? 'Rubric text extracted' : 'No text found in PDF')
+      } catch (err) {
+        console.error(err)
+        setStatus('Could not read PDF. Please try another file.')
+        setTimeout(() => setStatus(''), 1800)
+        return
+      }
+    } else {
+      rubricContent = await file.text()
+    }
+    
+    // Create new rubric with extracted content
+    const newRubric: Rubric = {
+      id: `r${Date.now()}`,
+      name: file.name.replace(/\.[^/.]+$/, ''), // Remove file extension
+      description: `Uploaded from ${file.name}`,
+      content: rubricContent,
+    }
+    
     await handlers.uploadRubricFile(file)
-    setStatus(`Uploaded ${file.name}`)
-    setTimeout(() => setStatus(''), 1200)
+    handleAddRubric(newRubric)
+    setStatus(`Rubric added: ${newRubric.name}`)
+    setTimeout(() => setStatus(''), 1800)
   }
 
   const handleEssayUpload = async (file: File | undefined | null) => {
