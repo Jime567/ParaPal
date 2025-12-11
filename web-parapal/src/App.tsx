@@ -58,7 +58,7 @@ function App() {
   const [essayStatus, setEssayStatus] = useState('')
   const [isSending, setIsSending] = useState(false)
 
-  // 👇 NEW: authenticated user email/username (null if logged out)
+  // authenticated user email/username (null if logged out)
   const [authedUser, setAuthedUser] = useState<string | null>(null)
 
   const selectedRubric = useMemo(
@@ -66,7 +66,7 @@ function App() {
     [rubrics, selectedRubricId],
   )
 
-  // 👇 NEW: on initial load, check if Cognito already has a session
+  // on initial load, check if Cognito already has a session
   useEffect(() => {
     ;(async () => {
       const user = await getCurrentCognitoUser()
@@ -76,7 +76,7 @@ function App() {
     })()
   }, [])
 
-  // 👇 NEW: this is called by AuthPanel when user logs in/out
+  // this is called by AuthPanel when user logs in/out
   const handleAuthChange = (email: string | null) => {
     setAuthedUser(email)
   }
