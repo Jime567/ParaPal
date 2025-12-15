@@ -13,9 +13,11 @@ type AuthMode = 'login' | 'signup'
 type AuthPanelProps = {
   // App can listen when login/logout happens
   onAuthChange?: (email: string | null) => void
+  // Track if user is logged in from parent (for syncing external logouts)
+  isLoggedIn?: boolean
 }
 
-export default function AuthPanel({ onAuthChange }: AuthPanelProps) {
+export default function AuthPanel({ onAuthChange, isLoggedIn }: AuthPanelProps) {
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -40,6 +42,19 @@ export default function AuthPanel({ onAuthChange }: AuthPanelProps) {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Sync when parent logs out externally (e.g., from the top logout button)
+  useEffect(() => {
+    if (isLoggedIn === false && currentUserEmail !== null) {
+      setCurrentUserEmail(null)
+      setEmail('')
+      setPassword('')
+      setCode('')
+      setAuthMode('login')
+      setNeedsConfirmation(false)
+      resetMessages()
+    }
+  }, [isLoggedIn])
 
   const resetMessages = () => {
     setMessage(null)

@@ -3,9 +3,10 @@ import * as handlers from './handlers'
 import { extractTextFromPdf } from './pdf'
 import logo from './assets/parapal.png'
 import './App.css'
+import standardsDataSource from './standards-data.json'
 
 import AuthPanel from './components/AuthPanel'
-import { getCurrentCognitoUser } from './auth'
+import { getCurrentCognitoUser, logoutUser } from './auth'
 
 type Role = 'user' | 'agent'
 
@@ -21,20 +22,59 @@ type Rubric = {
   id: string
   name: string
   description: string
+  content?: string  // Extracted text from uploaded PDF
   criteria?: string[]
 }
+
+type StandardRow = {
+  grade: string
+  strand: string
+  code: string
+  description: string
+}
+
+type StrandWithSelection = {
+  strand: string
+  checked: boolean
+  standards: (StandardRow & { checked: boolean })[]
+}
+
+type GradeOption = { value: string; label: string; dataGrade: string }
+
+const strandLabels: Record<string, string> = {
+  SL: 'Speaking & Listening',
+  W: 'Writing',
+  R: 'Reading',
+}
+
+const gradeOptions: GradeOption[] = [
+  { value: 'K', label: 'Kindergarten', dataGrade: 'Kindergarten' },
+  { value: '1', label: 'Grade 1', dataGrade: 'Grade 1' },
+  { value: '2', label: 'Grade 2', dataGrade: 'Grade 2' },
+  { value: '3', label: 'Grade 3', dataGrade: 'Grade 3' },
+  { value: '4', label: 'Grade 4', dataGrade: 'Grade 4' },
+  { value: '5', label: 'Grade 5', dataGrade: 'Grade 5' },
+  { value: '6', label: 'Grade 6', dataGrade: 'Grade 6' },
+  { value: '7', label: 'Grade 7', dataGrade: 'Grades 7–8' },
+  { value: '8', label: 'Grade 8', dataGrade: 'Grades 7–8' },
+  { value: '9', label: 'Grade 9', dataGrade: 'Grades 9–10' },
+  { value: '10', label: 'Grade 10', dataGrade: 'Grades 9–10' },
+  { value: '11', label: 'Grade 11', dataGrade: 'Grades 11–12' },
+  { value: '12', label: 'Grade 12', dataGrade: 'Grades 11–12' },
+]
+
+const standardsData = standardsDataSource as StandardRow[]
+
+const makeStrandKey = (grade: string, strand: string) => `${grade}__${strand}`
+const makeStandardKey = (grade: string, strand: string, code: string) =>
+  `${grade}__${strand}__${code}`
 
 const starterRubrics: Rubric[] = [
   {
     id: 'r1',
     name: 'Narrative Writing (Grade 4)',
     description: 'Checks sequence, detail, and a satisfying ending.',
-    criteria: [],
-  },
-  {
-    id: 'r2',
-    name: 'Opinion Writing (Grade 5)',
-    description: 'Focuses on stance, reasons, and evidence.',
+    content: 'Write narrative pieces to develop real or imagined experiences or events using effective technique, descriptive details, clear event sequences, and provide a resolution. a. Orient the reader by establishing a situation and introducing a narrator and/or characters; organize an event sequence that unfolds naturally. b. Use dialogue and description to develop experiences and events or show the responses of characters to situations. c. Use a variety of transitional words and phrases to manage the sequence of events. d. Use concrete words, phrases, complex sentences, and sensory details to convey experiences and events precisely. e. Use appropriate conventions when writing including text cohesion, sentence structure, and phrasing.',
     criteria: [],
   },
 ]
@@ -57,14 +97,79 @@ function App() {
   const [status, setStatus] = useState('')
   const [essayStatus, setEssayStatus] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [selectedGrade, setSelectedGrade] = useState<GradeOption['value']>(() =>
+    gradeOptions.find((g) => g.value === '4') ? '4' : gradeOptions[0].value,
+  )
+  const [selectedStrands, setSelectedStrands] = useState<Record<string, boolean>>({})
+  const [selectedStandardsMap, setSelectedStandardsMap] = useState<Record<string, boolean>>({})
 
   // 👇 NEW: authenticated user email/username (null if logged out)
   const [authedUser, setAuthedUser] = useState<string | null>(null)
+  
+  // 👇 Temporary rubric content from file upload (before saving)
+  const [uploadedRubricContent, setUploadedRubricContent] = useState<string>('')
 
   const selectedRubric = useMemo(
     () => rubrics.find((r) => r.id === selectedRubricId) || rubrics[0],
     [rubrics, selectedRubricId],
   )
+
+  const standardsByGrade = useMemo(() => {
+    const grouped: Record<string, Record<string, StandardRow[]>> = {}
+    standardsData.forEach((row) => {
+      const gradeKey = row.grade
+      const strandKey = row.strand
+      if (!grouped[gradeKey]) {
+        grouped[gradeKey] = {}
+      }
+      if (!grouped[gradeKey][strandKey]) {
+        grouped[gradeKey][strandKey] = []
+      }
+      grouped[gradeKey][strandKey].push(row)
+    })
+    return grouped
+  }, [])
+
+  const selectedDataGrade = useMemo(
+    () => gradeOptions.find((g) => g.value === selectedGrade)?.dataGrade ?? gradeOptions[0].dataGrade,
+    [selectedGrade],
+  )
+
+  const strandOptions = useMemo<StrandWithSelection[]>(() => {
+    const gradeStrands = standardsByGrade[selectedDataGrade] ?? {}
+    return Object.entries(gradeStrands).map(([strand, items]) => {
+      const strandChecked = !!selectedStrands[makeStrandKey(selectedDataGrade, strand)]
+      return {
+        strand,
+        checked: strandChecked,
+        standards: items.map((item) => ({
+          ...item,
+          checked: !!selectedStandardsMap[makeStandardKey(selectedDataGrade, strand, item.code)],
+        })),
+      }
+    })
+  }, [selectedDataGrade, standardsByGrade, selectedStandardsMap, selectedStrands])
+
+  const selectedStandardsList = useMemo(
+    () =>
+      Object.entries(standardsByGrade[selectedDataGrade] ?? {}).flatMap(([strand, items]) => {
+        const strandActive = !!selectedStrands[makeStrandKey(selectedDataGrade, strand)]
+        if (!strandActive) return []
+        return items
+          .filter((item) =>
+            selectedStandardsMap[makeStandardKey(selectedDataGrade, strand, item.code)],
+          )
+          .map((item) => ({
+            code: item.code,
+            description: item.description,
+            strand,
+            grade: selectedDataGrade,
+          }))
+      }),
+    [selectedDataGrade, selectedStandardsMap, selectedStrands, standardsByGrade],
+  )
+
+  const selectedStandardsCount = selectedStandardsList.length
 
   // 👇 NEW: on initial load, check if Cognito already has a session
   useEffect(() => {
@@ -79,6 +184,16 @@ function App() {
   // 👇 NEW: this is called by AuthPanel when user logs in/out
   const handleAuthChange = (email: string | null) => {
     setAuthedUser(email)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+      setAuthedUser(null)
+      setNavOpen(false)
+    } catch (err) {
+      console.error('Logout failed:', err)
+    }
   }
 
   const handleAddRubric = async (newRubric: Rubric) => {
@@ -98,10 +213,72 @@ function App() {
 
   const handleRubricUpload = async (file: File | undefined | null) => {
     if (!file) return
-    setStatus('Uploading...')
+    setStatus('Extracting rubric...')
+    
+    let rubricContent = ''
+    
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      try {
+        const text = await extractTextFromPdf(file)
+        rubricContent = text || ''
+        setStatus(text ? 'Rubric text extracted. Fill in the fields below and click "Save rubric".' : 'No text found in PDF')
+      } catch (err) {
+        console.error(err)
+        setStatus('Could not read PDF. Please try another file.')
+        setTimeout(() => setStatus(''), 1800)
+        return
+      }
+    } else {
+      rubricContent = await file.text()
+      setStatus('Rubric content loaded. Fill in the fields below and click "Save rubric".')
+    }
+    
+    // Store content temporarily until user clicks "Save rubric"
+    setUploadedRubricContent(rubricContent)
     await handlers.uploadRubricFile(file)
-    setStatus(`Uploaded ${file.name}`)
-    setTimeout(() => setStatus(''), 1200)
+    
+    setTimeout(() => setStatus(''), 3000)
+  }
+
+  const handleToggleStrand = (strand: string) => {
+    const gradeKey = selectedDataGrade
+    const strandKey = makeStrandKey(gradeKey, strand)
+    const nextChecked = !selectedStrands[strandKey]
+    setSelectedStrands((prev) => ({ ...prev, [strandKey]: nextChecked }))
+
+    const strandStandards = standardsByGrade[gradeKey]?.[strand] ?? []
+    if (!strandStandards.length || !nextChecked) return
+
+    const hasAnySelection = strandStandards.some((item) =>
+      selectedStandardsMap[makeStandardKey(gradeKey, strand, item.code)],
+    )
+
+    if (!hasAnySelection) {
+      setSelectedStandardsMap((prev) => {
+        const next = { ...prev }
+        strandStandards.forEach((item) => {
+          const key = makeStandardKey(gradeKey, strand, item.code)
+          next[key] = true
+        })
+        return next
+      })
+    }
+  }
+
+  const handleToggleStandard = (strand: string, code: string) => {
+    const gradeKey = selectedDataGrade
+    const standardKey = makeStandardKey(gradeKey, strand, code)
+    setSelectedStandardsMap((prev) => {
+      const next = { ...prev }
+      if (next[standardKey]) {
+        delete next[standardKey]
+      } else {
+        next[standardKey] = true
+      }
+      return next
+    })
+    const strandKey = makeStrandKey(gradeKey, strand)
+    setSelectedStrands((prev) => ({ ...prev, [strandKey]: true }))
   }
 
   const handleEssayUpload = async (file: File | undefined | null) => {
@@ -131,6 +308,10 @@ function App() {
     if (!essayText && !essayFile) return
     setIsSending(true)
     const loaderId = crypto.randomUUID()
+    const standardsSummary =
+      selectedStandardsList.length > 0
+        ? `\nStandards: ${selectedStandardsList.map((s) => s.code).join(', ')}`
+        : '\nStandards: None selected'
     const userMessage = {
       id: crypto.randomUUID(),
       role: 'user' as const,
@@ -139,6 +320,7 @@ function App() {
         essayText ? `Essay:\n${essayText.slice(0, 1200)}${essayText.length > 1200 ? '...' : ''}` : '',
         essayFile ? `\nAttached file: ${essayFile.name}` : '',
         `\nRubric: ${selectedRubric?.name ?? 'Custom rubric'}`,
+        standardsSummary,
       ]
         .join('')
         .trim(),
@@ -157,6 +339,7 @@ function App() {
         essayText: essayText || `(file) ${essayFile?.name ?? 'Essay'}`,
         rubric: selectedRubric,
         selectedCriteria: [],
+        standards: selectedStandardsList,
       })
 
       setMessages((prev) => [
@@ -194,10 +377,37 @@ function App() {
         <button className="logo-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">
           <img src={logo} alt="ParaPal logo" className="logo-img" />
         </button>
-        <div>
-          <p className="eyebrow">ParaPal</p>
-          <h1 className="top-title">Essay Grader</h1>
-          {authedUser && <p className="muted">Signed in as {authedUser}</p>}
+        <div className="header-content">
+          <div className="header-title-section">
+            <p className="eyebrow">ParaPal</p>
+            <h1 className="top-title">Essay Grader</h1>
+            {authedUser && <p className="muted">Signed in as {authedUser}</p>}
+          </div>
+          {authedUser ? (
+            <div className="header-actions">
+              <nav className="header-tabs">
+                <button
+                  className={`tab-btn ${activeScreen === 'chat' ? 'active' : ''}`}
+                  onClick={() => setActiveScreen('chat')}
+                >
+                  Chat & Grade
+                </button>
+                <button
+                  className={`tab-btn ${activeScreen === 'rubrics' ? 'active' : ''}`}
+                  onClick={() => setActiveScreen('rubrics')}
+                >
+                  Standards & Rubrics
+                </button>
+              </nav>
+              <button className="logout-btn" onClick={handleLogout}>
+                Log Out
+              </button>
+            </div>
+          ) : (
+            <button className="signin-btn" onClick={() => setNavOpen(true)}>
+              Log In or Sign Up
+            </button>
+          )}
         </div>
       </header>
 
@@ -210,6 +420,8 @@ function App() {
               onDelete={handleDeleteRubric}
               onUploadFile={handleRubricUpload}
               status={status}
+              uploadedContent={uploadedRubricContent}
+              onClearUploadedContent={() => setUploadedRubricContent('')}
             />
           ) : (
             <ChatWorkspace
@@ -217,6 +429,13 @@ function App() {
               messages={messages}
               selectedRubricId={selectedRubricId}
               onRubricChange={setSelectedRubricId}
+              gradeOptions={gradeOptions}
+              selectedGrade={selectedGrade}
+              onGradeChange={setSelectedGrade}
+              strandOptions={strandOptions}
+              onToggleStrand={handleToggleStrand}
+              onToggleStandard={handleToggleStandard}
+              selectedStandardsCount={selectedStandardsCount}
               essayFile={essayFile}
               onEssayUpload={handleEssayUpload}
               onSend={handleSend}
@@ -276,7 +495,7 @@ function App() {
 
           {/* Auth UI lives in the drawer and keeps App in sync */}
           <div style={{ marginTop: '1.5rem' }}>
-            <AuthPanel onAuthChange={handleAuthChange} />
+            <AuthPanel onAuthChange={handleAuthChange} isLoggedIn={authedUser !== null} />
           </div>
         </aside>
       </div>
@@ -290,27 +509,46 @@ function RubricManager({
   onDelete,
   onUploadFile,
   status,
+  uploadedContent,
+  onClearUploadedContent,
 }: {
   rubrics: Rubric[]
   onAddRubric: (rubric: Rubric) => void
   onDelete: (id: string) => void
   onUploadFile: (file: File | undefined | null) => void
   status: string
+  uploadedContent: string
+  onClearUploadedContent: () => void
 }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [validationError, setValidationError] = useState('')
 
   const handleCreate = () => {
-    if (!name.trim()) return
+    // Validate all required fields
+    if (!name.trim() || !description.trim() || !uploadedContent.trim()) {
+      const missingFields = []
+      if (!name.trim()) missingFields.push('name')
+      if (!description.trim()) missingFields.push('description')
+      if (!uploadedContent.trim()) missingFields.push('content')
+      
+      setValidationError(`Please provide: ${missingFields.join(', ')}`)
+      setTimeout(() => setValidationError(''), 3000)
+      return
+    }
+    
     const newRubric: Rubric = {
       id: `rubric-${crypto.randomUUID()}`,
       name,
       description,
+      content: uploadedContent,
       criteria: [],
     }
     onAddRubric(newRubric)
     setName('')
     setDescription('')
+    onClearUploadedContent()
+    setValidationError('')
   }
 
   return (
@@ -355,7 +593,9 @@ function RubricManager({
         <button className="button" onClick={handleCreate}>
           Save rubric
         </button>
-        <p className="status">Stored locally until backend wiring is ready.</p>
+        <p className="status">
+          {validationError || 'Stored locally until backend wiring is ready.'}
+        </p>
       </div>
 
       <div className="rubric-list">
@@ -383,6 +623,13 @@ function ChatWorkspace({
   messages,
   selectedRubricId,
   onRubricChange,
+  gradeOptions,
+  selectedGrade,
+  onGradeChange,
+  strandOptions,
+  onToggleStrand,
+  onToggleStandard,
+  selectedStandardsCount,
   essayFile,
   onEssayUpload,
   onSend,
@@ -394,6 +641,13 @@ function ChatWorkspace({
   messages: Message[]
   selectedRubricId: string
   onRubricChange: (id: string) => void
+  gradeOptions: GradeOption[]
+  selectedGrade: string
+  onGradeChange: (value: string) => void
+  strandOptions: StrandWithSelection[]
+  onToggleStrand: (strand: string) => void
+  onToggleStandard: (strand: string, code: string) => void
+  selectedStandardsCount: number
   essayFile: File | null
   onEssayUpload: (file: File | undefined | null) => void
   onSend: () => void
@@ -407,7 +661,6 @@ function ChatWorkspace({
     <section className="panel chat-panel">
       <div className="panel-header">
         <h2>Chat & Grade</h2>
-        <div className="badge">Ready</div>
       </div>
       <div className="chat-grid">
         <div className="chat-shell">
@@ -416,6 +669,79 @@ function ChatWorkspace({
 
         <div className="panel side-panel">
           <div className="panel-header">
+            <h3>Standards</h3>
+            <div className="badge">
+              {selectedStandardsCount}{' '}
+              {selectedStandardsCount === 1 ? 'standard selected' : 'standards selected'}
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Grade (K-12)</label>
+            <select
+              className="input"
+              value={selectedGrade}
+              onChange={(e) => onGradeChange(e.target.value)}
+            >
+              {gradeOptions.map((grade) => (
+                <option key={grade.value} value={grade.value}>
+                  {grade.label}
+                </option>
+              ))}
+            </select>
+            <div className="status">Pick a grade to load its strands and standards.</div>
+          </div>
+          <div className="standards-box">
+            {strandOptions.length ? (
+              strandOptions.map((strand) => (
+                <div key={strand.strand} className="strand-card">
+                  <div className="strand-header">
+                    <label className="strand-toggle">
+                      <input
+                        type="checkbox"
+                        checked={strand.checked}
+                        onChange={() => onToggleStrand(strand.strand)}
+                      />
+                      <div>
+                        <div className="strand-name">
+                          {strandLabels[strand.strand] ?? strand.strand}
+                          <span className="strand-code">{strand.strand}</span>
+                        </div>
+                        <div className="status">
+                          {strand.checked
+                            ? 'All checked standards below will be sent.'
+                            : 'Check to include this strand, then deselect any standards you do not need.'}
+                        </div>
+                      </div>
+                    </label>
+                    <span className="pill secondary">{strand.standards.length} standards</span>
+                  </div>
+                  <div className="standard-list">
+                    {strand.standards.map((std) => (
+                      <label
+                        key={std.code}
+                        className={`standard-item ${strand.checked ? '' : 'disabled'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!strand.checked}
+                          checked={strand.checked && std.checked}
+                          onChange={() => onToggleStandard(strand.strand, std.code)}
+                        />
+                        <div>
+                          <div className="standard-code">{std.code}</div>
+                          <div className="standard-description">{std.description}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="muted">No standards available for this grade.</p>
+            )}
+          </div>
+
+          <div className="panel-header section-divider">
             <h3>Rubric</h3>
             <div className="badge">Rubrics {rubrics.length}</div>
           </div>

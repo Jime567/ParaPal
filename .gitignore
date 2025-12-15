@@ -2,3 +2,4 @@ node_modules/
 lambda_deploy.zip
 *__pycache__/
 *.pyc
+scratch.txt
