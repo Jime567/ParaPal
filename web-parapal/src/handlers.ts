@@ -13,6 +13,7 @@ type SendArgs = {
   essayText: string
   rubric: { name: string; content?: string }
   selectedCriteria?: string[]
+  standards?: { code: string; description: string }[]
 }
 
 // Helper to format rubric display name - prefer name, otherwise truncate content
@@ -30,7 +31,7 @@ function getRubricDisplayName(rubric: { name?: string; content?: string } | stri
   return 'Custom rubric'
 }
 
-export async function sendMessage({ prompt, essayText, rubric, selectedCriteria }: SendArgs) {
+export async function sendMessage({ prompt, essayText, rubric, selectedCriteria, standards }: SendArgs) {
   // Avoid unused warnings while keeping signature future-proof.
   void prompt
   void selectedCriteria
@@ -48,6 +49,10 @@ export async function sendMessage({ prompt, essayText, rubric, selectedCriteria 
     rubric:
       rubric?.content ||
       'Grade on clarity, organization, grammar, and argument strength from 0-100.',
+    standards: (standards || []).map((item) => ({
+      StandardCode: item.code,
+      Description: item.description,
+    })),
   }
 
   console.log('Grading API request payload:', payload)

@@ -3,6 +3,7 @@ import * as handlers from './handlers'
 import { extractTextFromPdf } from './pdf'
 import logo from './assets/parapal.png'
 import './App.css'
+import standardsDataSource from './standards-data.json'
 
 import AuthPanel from './components/AuthPanel'
 import { getCurrentCognitoUser, logoutUser } from './auth'
@@ -24,6 +25,49 @@ type Rubric = {
   content?: string  // Extracted text from uploaded PDF
   criteria?: string[]
 }
+
+type StandardRow = {
+  grade: string
+  strand: string
+  code: string
+  description: string
+}
+
+type StrandWithSelection = {
+  strand: string
+  checked: boolean
+  standards: (StandardRow & { checked: boolean })[]
+}
+
+type GradeOption = { value: string; label: string; dataGrade: string }
+
+const strandLabels: Record<string, string> = {
+  SL: 'Speaking & Listening',
+  W: 'Writing',
+  R: 'Reading',
+}
+
+const gradeOptions: GradeOption[] = [
+  { value: 'K', label: 'Kindergarten', dataGrade: 'Kindergarten' },
+  { value: '1', label: 'Grade 1', dataGrade: 'Grade 1' },
+  { value: '2', label: 'Grade 2', dataGrade: 'Grade 2' },
+  { value: '3', label: 'Grade 3', dataGrade: 'Grade 3' },
+  { value: '4', label: 'Grade 4', dataGrade: 'Grade 4' },
+  { value: '5', label: 'Grade 5', dataGrade: 'Grade 5' },
+  { value: '6', label: 'Grade 6', dataGrade: 'Grade 6' },
+  { value: '7', label: 'Grade 7', dataGrade: 'Grades 7–8' },
+  { value: '8', label: 'Grade 8', dataGrade: 'Grades 7–8' },
+  { value: '9', label: 'Grade 9', dataGrade: 'Grades 9–10' },
+  { value: '10', label: 'Grade 10', dataGrade: 'Grades 9–10' },
+  { value: '11', label: 'Grade 11', dataGrade: 'Grades 11–12' },
+  { value: '12', label: 'Grade 12', dataGrade: 'Grades 11–12' },
+]
+
+const standardsData = standardsDataSource as StandardRow[]
+
+const makeStrandKey = (grade: string, strand: string) => `${grade}__${strand}`
+const makeStandardKey = (grade: string, strand: string, code: string) =>
+  `${grade}__${strand}__${code}`
 
 const starterRubrics: Rubric[] = [
   {
@@ -53,6 +97,11 @@ function App() {
   const [status, setStatus] = useState('')
   const [essayStatus, setEssayStatus] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [selectedGrade, setSelectedGrade] = useState<GradeOption['value']>(() =>
+    gradeOptions.find((g) => g.value === '4') ? '4' : gradeOptions[0].value,
+  )
+  const [selectedStrands, setSelectedStrands] = useState<Record<string, boolean>>({})
+  const [selectedStandardsMap, setSelectedStandardsMap] = useState<Record<string, boolean>>({})
 
   // 👇 NEW: authenticated user email/username (null if logged out)
   const [authedUser, setAuthedUser] = useState<string | null>(null)
@@ -64,6 +113,63 @@ function App() {
     () => rubrics.find((r) => r.id === selectedRubricId) || rubrics[0],
     [rubrics, selectedRubricId],
   )
+
+  const standardsByGrade = useMemo(() => {
+    const grouped: Record<string, Record<string, StandardRow[]>> = {}
+    standardsData.forEach((row) => {
+      const gradeKey = row.grade
+      const strandKey = row.strand
+      if (!grouped[gradeKey]) {
+        grouped[gradeKey] = {}
+      }
+      if (!grouped[gradeKey][strandKey]) {
+        grouped[gradeKey][strandKey] = []
+      }
+      grouped[gradeKey][strandKey].push(row)
+    })
+    return grouped
+  }, [])
+
+  const selectedDataGrade = useMemo(
+    () => gradeOptions.find((g) => g.value === selectedGrade)?.dataGrade ?? gradeOptions[0].dataGrade,
+    [selectedGrade],
+  )
+
+  const strandOptions = useMemo<StrandWithSelection[]>(() => {
+    const gradeStrands = standardsByGrade[selectedDataGrade] ?? {}
+    return Object.entries(gradeStrands).map(([strand, items]) => {
+      const strandChecked = !!selectedStrands[makeStrandKey(selectedDataGrade, strand)]
+      return {
+        strand,
+        checked: strandChecked,
+        standards: items.map((item) => ({
+          ...item,
+          checked: !!selectedStandardsMap[makeStandardKey(selectedDataGrade, strand, item.code)],
+        })),
+      }
+    })
+  }, [selectedDataGrade, standardsByGrade, selectedStandardsMap, selectedStrands])
+
+  const selectedStandardsList = useMemo(
+    () =>
+      Object.entries(standardsByGrade[selectedDataGrade] ?? {}).flatMap(([strand, items]) => {
+        const strandActive = !!selectedStrands[makeStrandKey(selectedDataGrade, strand)]
+        if (!strandActive) return []
+        return items
+          .filter((item) =>
+            selectedStandardsMap[makeStandardKey(selectedDataGrade, strand, item.code)],
+          )
+          .map((item) => ({
+            code: item.code,
+            description: item.description,
+            strand,
+            grade: selectedDataGrade,
+          }))
+      }),
+    [selectedDataGrade, selectedStandardsMap, selectedStrands, standardsByGrade],
+  )
+
+  const selectedStandardsCount = selectedStandardsList.length
 
   // 👇 NEW: on initial load, check if Cognito already has a session
   useEffect(() => {
@@ -134,6 +240,47 @@ function App() {
     setTimeout(() => setStatus(''), 3000)
   }
 
+  const handleToggleStrand = (strand: string) => {
+    const gradeKey = selectedDataGrade
+    const strandKey = makeStrandKey(gradeKey, strand)
+    const nextChecked = !selectedStrands[strandKey]
+    setSelectedStrands((prev) => ({ ...prev, [strandKey]: nextChecked }))
+
+    const strandStandards = standardsByGrade[gradeKey]?.[strand] ?? []
+    if (!strandStandards.length || !nextChecked) return
+
+    const hasAnySelection = strandStandards.some((item) =>
+      selectedStandardsMap[makeStandardKey(gradeKey, strand, item.code)],
+    )
+
+    if (!hasAnySelection) {
+      setSelectedStandardsMap((prev) => {
+        const next = { ...prev }
+        strandStandards.forEach((item) => {
+          const key = makeStandardKey(gradeKey, strand, item.code)
+          next[key] = true
+        })
+        return next
+      })
+    }
+  }
+
+  const handleToggleStandard = (strand: string, code: string) => {
+    const gradeKey = selectedDataGrade
+    const standardKey = makeStandardKey(gradeKey, strand, code)
+    setSelectedStandardsMap((prev) => {
+      const next = { ...prev }
+      if (next[standardKey]) {
+        delete next[standardKey]
+      } else {
+        next[standardKey] = true
+      }
+      return next
+    })
+    const strandKey = makeStrandKey(gradeKey, strand)
+    setSelectedStrands((prev) => ({ ...prev, [strandKey]: true }))
+  }
+
   const handleEssayUpload = async (file: File | undefined | null) => {
     if (!file) return
     setEssayFile(file)
@@ -161,6 +308,10 @@ function App() {
     if (!essayText && !essayFile) return
     setIsSending(true)
     const loaderId = crypto.randomUUID()
+    const standardsSummary =
+      selectedStandardsList.length > 0
+        ? `\nStandards: ${selectedStandardsList.map((s) => s.code).join(', ')}`
+        : '\nStandards: None selected'
     const userMessage = {
       id: crypto.randomUUID(),
       role: 'user' as const,
@@ -169,6 +320,7 @@ function App() {
         essayText ? `Essay:\n${essayText.slice(0, 1200)}${essayText.length > 1200 ? '...' : ''}` : '',
         essayFile ? `\nAttached file: ${essayFile.name}` : '',
         `\nRubric: ${selectedRubric?.name ?? 'Custom rubric'}`,
+        standardsSummary,
       ]
         .join('')
         .trim(),
@@ -187,6 +339,7 @@ function App() {
         essayText: essayText || `(file) ${essayFile?.name ?? 'Essay'}`,
         rubric: selectedRubric,
         selectedCriteria: [],
+        standards: selectedStandardsList,
       })
 
       setMessages((prev) => [
@@ -276,6 +429,13 @@ function App() {
               messages={messages}
               selectedRubricId={selectedRubricId}
               onRubricChange={setSelectedRubricId}
+              gradeOptions={gradeOptions}
+              selectedGrade={selectedGrade}
+              onGradeChange={setSelectedGrade}
+              strandOptions={strandOptions}
+              onToggleStrand={handleToggleStrand}
+              onToggleStandard={handleToggleStandard}
+              selectedStandardsCount={selectedStandardsCount}
               essayFile={essayFile}
               onEssayUpload={handleEssayUpload}
               onSend={handleSend}
@@ -463,6 +623,13 @@ function ChatWorkspace({
   messages,
   selectedRubricId,
   onRubricChange,
+  gradeOptions,
+  selectedGrade,
+  onGradeChange,
+  strandOptions,
+  onToggleStrand,
+  onToggleStandard,
+  selectedStandardsCount,
   essayFile,
   onEssayUpload,
   onSend,
@@ -474,6 +641,13 @@ function ChatWorkspace({
   messages: Message[]
   selectedRubricId: string
   onRubricChange: (id: string) => void
+  gradeOptions: GradeOption[]
+  selectedGrade: string
+  onGradeChange: (value: string) => void
+  strandOptions: StrandWithSelection[]
+  onToggleStrand: (strand: string) => void
+  onToggleStandard: (strand: string, code: string) => void
+  selectedStandardsCount: number
   essayFile: File | null
   onEssayUpload: (file: File | undefined | null) => void
   onSend: () => void
@@ -495,6 +669,79 @@ function ChatWorkspace({
 
         <div className="panel side-panel">
           <div className="panel-header">
+            <h3>Standards</h3>
+            <div className="badge">
+              {selectedStandardsCount}{' '}
+              {selectedStandardsCount === 1 ? 'standard selected' : 'standards selected'}
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Grade (K-12)</label>
+            <select
+              className="input"
+              value={selectedGrade}
+              onChange={(e) => onGradeChange(e.target.value)}
+            >
+              {gradeOptions.map((grade) => (
+                <option key={grade.value} value={grade.value}>
+                  {grade.label}
+                </option>
+              ))}
+            </select>
+            <div className="status">Pick a grade to load its strands and standards.</div>
+          </div>
+          <div className="standards-box">
+            {strandOptions.length ? (
+              strandOptions.map((strand) => (
+                <div key={strand.strand} className="strand-card">
+                  <div className="strand-header">
+                    <label className="strand-toggle">
+                      <input
+                        type="checkbox"
+                        checked={strand.checked}
+                        onChange={() => onToggleStrand(strand.strand)}
+                      />
+                      <div>
+                        <div className="strand-name">
+                          {strandLabels[strand.strand] ?? strand.strand}
+                          <span className="strand-code">{strand.strand}</span>
+                        </div>
+                        <div className="status">
+                          {strand.checked
+                            ? 'All checked standards below will be sent.'
+                            : 'Check to include this strand, then deselect any standards you do not need.'}
+                        </div>
+                      </div>
+                    </label>
+                    <span className="pill secondary">{strand.standards.length} standards</span>
+                  </div>
+                  <div className="standard-list">
+                    {strand.standards.map((std) => (
+                      <label
+                        key={std.code}
+                        className={`standard-item ${strand.checked ? '' : 'disabled'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!strand.checked}
+                          checked={strand.checked && std.checked}
+                          onChange={() => onToggleStandard(strand.strand, std.code)}
+                        />
+                        <div>
+                          <div className="standard-code">{std.code}</div>
+                          <div className="standard-description">{std.description}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="muted">No standards available for this grade.</p>
+            )}
+          </div>
+
+          <div className="panel-header section-divider">
             <h3>Rubric</h3>
             <div className="badge">Rubrics {rubrics.length}</div>
           </div>

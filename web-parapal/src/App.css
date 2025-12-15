@@ -309,7 +309,6 @@
 .upload-box {
   border: 1px dashed var(--border);
   border-radius: 14px;
-  padding: 14px;
   background: rgba(17, 26, 47, 0.5);
   margin: 12px 0;
 }
@@ -369,6 +368,7 @@
   gap: 12px;
   flex: 1;
   min-height: 0;
+  padding-bottom: 140px; /* keep content clear of sticky chat input */
 }
 
 .chat-shell {
@@ -388,7 +388,7 @@
   gap: 12px;
   min-height: 0;
   flex: 1;
-  padding-bottom: 64px;
+  padding-bottom: 300px;
 }
 
 .message {
@@ -522,6 +522,91 @@
   gap: 8px;
   align-items: center;
   color: var(--muted);
+}
+
+.standards-box {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-bottom: 8px;
+}
+
+.strand-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--panel-2);
+  display: grid;
+  gap: 8px;
+}
+
+.strand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strand-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.strand-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.strand-code {
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.standard-list {
+  display: grid;
+  gap: 8px;
+}
+
+.standard-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.standard-item.disabled {
+  opacity: 0.55;
+}
+
+.standard-code {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.standard-description {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.section-divider {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .file-chip {
