@@ -227,6 +227,10 @@
   overflow: hidden;
 }
 
+.bulk-panel {
+  grid-template-rows: auto 1fr;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -367,6 +371,14 @@
 .collapse-body {
   display: grid;
   gap: 10px;
+}
+
+.status.success {
+  color: #6ad6a4;
+}
+
+.status.error {
+  color: #ff9d9d;
 }
 
 .input {
@@ -689,6 +701,128 @@
   overflow: auto;
 }
 
+.bulk-layout {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+.bulk-controls {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.bulk-list {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.bulk-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.bulk-card {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  transition: border 0.15s ease, transform 0.12s ease;
+}
+
+.bulk-card:disabled {
+  cursor: not-allowed;
+}
+
+.bulk-card.done:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+.bulk-card.grading {
+  opacity: 0.8;
+}
+
+.bulk-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bulk-name {
+  font-weight: 700;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 20;
+}
+
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  max-width: 720px;
+  width: min(720px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: var(--shadow);
+}
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.modal-title {
+  margin: 0 0 8px;
+}
+
+.modal-body {
+  margin-top: 10px;
+}
+
 .nav-overlay {
   position: fixed;
   inset: 0;
@@ -747,5 +881,8 @@
   .panel.chat-panel {
     height: auto;
     min-height: 0;
+  }
+  .bulk-layout {
+    grid-template-columns: 1fr;
   }
 }

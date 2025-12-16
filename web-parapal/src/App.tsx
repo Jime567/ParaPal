@@ -40,6 +40,7 @@ type StrandWithSelection = {
 }
 
 type GradeOption = { value: string; label: string; dataGrade: string }
+type SelectedStandard = { code: string; description: string; strand: string; grade: string }
 
 const strandLabels: Record<string, string> = {
   SL: 'Speaking & Listening',
@@ -80,7 +81,7 @@ const starterRubrics: Rubric[] = [
 ]
 
 function App() {
-  const [activeScreen, setActiveScreen] = useState<'chat' | 'rubrics'>('chat')
+  const [activeScreen, setActiveScreen] = useState<'chat' | 'rubrics' | 'bulk'>('chat')
   const [navOpen, setNavOpen] = useState(false)
   const [rubrics, setRubrics] = useState<Rubric[]>(starterRubrics)
   const [messages, setMessages] = useState<Message[]>([
@@ -398,6 +399,12 @@ function App() {
                 >
                   Standards & Rubrics
                 </button>
+                <button
+                  className={`tab-btn ${activeScreen === 'bulk' ? 'active' : ''}`}
+                  onClick={() => setActiveScreen('bulk')}
+                >
+                  Bulk Grade
+                </button>
               </nav>
               <button className="logout-btn" onClick={handleLogout}>
                 Log Out
@@ -422,6 +429,20 @@ function App() {
               status={status}
               uploadedContent={uploadedRubricContent}
               onClearUploadedContent={() => setUploadedRubricContent('')}
+            />
+          ) : activeScreen === 'bulk' ? (
+            <BulkGradeWorkspace
+              rubrics={rubrics}
+              selectedRubricId={selectedRubricId}
+              onRubricChange={setSelectedRubricId}
+              gradeOptions={gradeOptions}
+              selectedGrade={selectedGrade}
+              onGradeChange={setSelectedGrade}
+              strandOptions={strandOptions}
+              onToggleStrand={handleToggleStrand}
+              onToggleStandard={handleToggleStandard}
+              selectedStandardsCount={selectedStandardsCount}
+              selectedStandardsList={selectedStandardsList}
             />
           ) : (
             <ChatWorkspace
@@ -490,6 +511,13 @@ function App() {
             >
               <span>Standards & Rubrics</span>
               <small>Upload and curate grading criteria</small>
+            </button>
+            <button
+              className={activeScreen === 'bulk' ? 'active' : ''}
+              onClick={() => handleNavSelect('bulk')}
+            >
+              <span>Bulk Grade</span>
+              <small>Upload and grade many essays</small>
             </button>
           </div>
 
@@ -835,6 +863,298 @@ function ChatWorkspace({
           </div>
         </div>
       </div>
+    </section>
+  )
+}
+
+type BulkEssay = {
+  id: string
+  name: string
+  text: string
+  status: 'queued' | 'grading' | 'done' | 'error'
+  result?: { reply: string; rubricUsed: string }
+  error?: string
+}
+
+function BulkGradeWorkspace({
+  rubrics,
+  selectedRubricId,
+  onRubricChange,
+  gradeOptions,
+  selectedGrade,
+  onGradeChange,
+  strandOptions,
+  onToggleStrand,
+  onToggleStandard,
+  selectedStandardsCount,
+  selectedStandardsList,
+}: {
+  rubrics: Rubric[]
+  selectedRubricId: string
+  onRubricChange: (id: string) => void
+  gradeOptions: GradeOption[]
+  selectedGrade: string
+  onGradeChange: (value: string) => void
+  strandOptions: StrandWithSelection[]
+  onToggleStrand: (strand: string) => void
+  onToggleStandard: (strand: string, code: string) => void
+  selectedStandardsCount: number
+  selectedStandardsList: SelectedStandard[]
+}) {
+  const selectedRubric = rubrics.find((r) => r.id === selectedRubricId) || rubrics[0]
+  const [essays, setEssays] = useState<BulkEssay[]>([])
+  const [modalEssay, setModalEssay] = useState<BulkEssay | null>(null)
+  const [uploadStatus, setUploadStatus] = useState('')
+
+  const handleBulkUpload = async (fileList: FileList | null) => {
+    if (!fileList?.length) return
+    const files = Array.from(fileList)
+    setUploadStatus(`Loading ${files.length} essays...`)
+
+    const loaded = await Promise.all(
+      files.map(async (file) => {
+        let text = ''
+        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+          try {
+            text = await extractTextFromPdf(file)
+          } catch (err) {
+            console.error('Failed to extract PDF:', err)
+            text = ''
+          }
+        } else {
+          text = await file.text()
+        }
+        return {
+          id: crypto.randomUUID(),
+          name: file.name,
+          text: text || '(No text extracted from file)',
+          status: 'queued' as const,
+        }
+      }),
+    )
+
+    setEssays((prev) => [...prev, ...loaded])
+    setUploadStatus('Starting grading...')
+    await gradeEssays(loaded)
+    setUploadStatus('')
+  }
+
+  const gradeEssays = async (items: BulkEssay[]) => {
+    for (const item of items) {
+      setEssays((prev) =>
+        prev.map((entry) => (entry.id === item.id ? { ...entry, status: 'grading' } : entry)),
+      )
+      try {
+        const response = await handlers.sendMessage({
+          prompt: '',
+          essayText: item.text,
+          rubric: selectedRubric,
+          selectedCriteria: [],
+          standards: selectedStandardsList,
+        })
+        setEssays((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: 'done', result: { reply: response.reply, rubricUsed: response.rubricUsed } }
+              : entry,
+          ),
+        )
+      } catch (err: any) {
+        setEssays((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: 'error', error: err?.message || 'Failed to grade essay.' }
+              : entry,
+          ),
+        )
+      }
+    }
+  }
+
+  const renderStatus = (essay: BulkEssay) => {
+    if (essay.status === 'grading') return <span className="spinner" aria-label="Grading" />
+    if (essay.status === 'done') return <span className="status success">Done</span>
+    if (essay.status === 'error') return <span className="status error">Error</span>
+    return <span className="status">Queued</span>
+  }
+
+  return (
+    <section className="panel chat-panel bulk-panel">
+      <div className="panel-header">
+        <h2>Bulk Grade</h2>
+        <div className="badge">{essays.length} uploaded</div>
+      </div>
+
+      <div className="bulk-layout">
+        <div className="bulk-controls">
+          <div className="upload-box">
+            <label className="muted">Upload essays (multiple files)</label>
+            <input
+              className="input"
+              type="file"
+              accept=".txt,.doc,.docx,.pdf"
+              multiple
+              onChange={(e) => handleBulkUpload(e.target.files)}
+            />
+            <p className="status">{uploadStatus || 'Each file will be graded separately.'}</p>
+          </div>
+
+          <div className="input-group">
+            <label>Pick a rubric</label>
+            <select
+              className="input"
+              value={selectedRubricId}
+              onChange={(e) => onRubricChange(e.target.value)}
+            >
+              {rubrics.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            <div className="status">{selectedRubric?.description}</div>
+          </div>
+
+          <div className="input-group">
+            <label>Grade (K-12)</label>
+            <select
+              className="input"
+              value={selectedGrade}
+              onChange={(e) => onGradeChange(e.target.value)}
+            >
+              {gradeOptions.map((grade) => (
+                <option key={grade.value} value={grade.value}>
+                  {grade.label}
+                </option>
+              ))}
+            </select>
+            <div className="status">Pick a grade to load its strands and standards.</div>
+          </div>
+
+          <div className="panel-header collapsible-header" style={{ marginTop: '4px' }}>
+            <div className="collapse-left">
+              <span className="title">Standards</span>
+              <div className="badge">
+                {selectedStandardsCount}{' '}
+                {selectedStandardsCount === 1 ? 'standard selected' : 'standards selected'}
+              </div>
+            </div>
+          </div>
+          <div className="standards-box">
+            {strandOptions.length ? (
+              strandOptions.map((strand) => (
+                <div key={strand.strand} className="strand-card">
+                  <div className="strand-header">
+                    <label className="strand-toggle">
+                      <input
+                        type="checkbox"
+                        checked={strand.checked}
+                        onChange={() => onToggleStrand(strand.strand)}
+                      />
+                      <div>
+                        <div className="strand-name">
+                          {strandLabels[strand.strand] ?? strand.strand}
+                          <span className="strand-code">{strand.strand}</span>
+                        </div>
+                        <div className="status">
+                          {strand.checked
+                            ? 'All checked standards below will be sent.'
+                            : 'Check to include this strand, then deselect any standards you do not need.'}
+                        </div>
+                      </div>
+                    </label>
+                    <span className="pill secondary">{strand.standards.length} standards</span>
+                  </div>
+                  <div className="standard-list">
+                    {strand.standards.map((std) => (
+                      <label
+                        key={std.code}
+                        className={`standard-item ${strand.checked ? '' : 'disabled'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!strand.checked}
+                          checked={strand.checked && std.checked}
+                          onChange={() => onToggleStandard(strand.strand, std.code)}
+                        />
+                        <div>
+                          <div className="standard-code">{std.code}</div>
+                          <div className="standard-description">{std.description}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="muted">No standards available for this grade.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bulk-list">
+          <div className="panel-header">
+            <h3>Essays</h3>
+            <div className="status">
+              {essays.filter((e) => e.status === 'done').length} graded,{' '}
+              {essays.filter((e) => e.status === 'grading').length} in progress
+            </div>
+          </div>
+          {essays.length === 0 ? (
+            <div className="empty-state">
+              <p className="muted">Upload files to start bulk grading.</p>
+            </div>
+          ) : (
+            <div className="bulk-cards">
+              {essays.map((essay) => (
+                <button
+                  key={essay.id}
+                  className={`bulk-card ${essay.status}`}
+                  onClick={() => essay.status === 'done' && setModalEssay(essay)}
+                  disabled={essay.status !== 'done'}
+                >
+                  <div className="bulk-card-top">
+                    <div>
+                      <div className="bulk-name">{essay.name}</div>
+                      <div className="status">
+                        {essay.text.slice(0, 80)}
+                        {essay.text.length > 80 ? '...' : ''}
+                      </div>
+                    </div>
+                    {renderStatus(essay)}
+                  </div>
+                  {essay.status === 'error' && <div className="status error">{essay.error}</div>}
+                  {essay.status === 'done' && <div className="status">Click to view grade</div>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modalEssay && (
+        <div className="modal-overlay" onClick={() => setModalEssay(null)} role="presentation">
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setModalEssay(null)} aria-label="Close">
+              ×
+            </button>
+            <h3 className="modal-title">{modalEssay.name}</h3>
+            <div className="status">Rubric: {modalEssay.result?.rubricUsed || 'N/A'}</div>
+            <div className="modal-body">
+              {modalEssay.result ? (
+                renderMessageContent({
+                  id: modalEssay.id,
+                  role: 'agent',
+                  meta: modalEssay.result.rubricUsed,
+                  text: modalEssay.result.reply,
+                })
+              ) : (
+                <p className="muted">No result available.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
