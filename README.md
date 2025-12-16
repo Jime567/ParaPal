@@ -1,4 +1,5 @@
 # **ParaPal MVP – Technical Architecture & Compliance Overview**
+https://github.com/user-attachments/assets/b6458fd8-e690-48ca-8e1a-99982d91d166
 
 <img width="1280" height="720" alt="Parapal Architecture(1)" src="https://github.com/user-attachments/assets/e04802ac-b40c-4dc5-9c44-352972437d1f" />
 
