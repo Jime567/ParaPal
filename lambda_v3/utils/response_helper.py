@@ -79,8 +79,14 @@ def verify_grade_obj(grade_obj):
         if not isinstance(item["score"], (int, float)):
             return 500, {"raw_output": json.dumps(grade_obj), "error": f"Score for category '{item['category']}' must be a number."}
         sum_category_scores += item["score"]
-    if (abs(sum_category_scores - overall_score) > 1e-1) and (abs(sum_category_scores/len(category_scores) - overall_score) > 1e-1): # Allows for average scoring
-        return 500, {"raw_output": json.dumps(grade_obj), "error": "'overall_score' does not equal the sum of 'category_scores'."}
+    
+    # If overall score is 0, then the only way for there to be a problem with the category scores is if they are nonzero
+    if (overall_score == 0) and (sum_category_scores != 0):
+        return 500, {"raw_output": json.dumps(grade_obj), "error": "overall score should not be 0 if the category scores are nonzero"}
+    if overall_score != 0:
+        if (abs(sum_category_scores - overall_score)/overall_score > .03) and (abs((sum_category_scores/len(category_scores)) - overall_score)/overall_score > .03): # Sum or average score should be within 3% of the sum category scores
+            return 500, {"raw_output": json.dumps(grade_obj), "error": "'overall_score' does not equal the sum of 'category_scores'."}
+    
     
     # Not actually needed in final response. Just used for verification.
     grade_obj.pop("inferred_scale_min")
