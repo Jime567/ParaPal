@@ -656,6 +656,8 @@ function ChatWorkspace({
   essayStatus: string
 }) {
   const selectedRubric = rubrics.find((r) => r.id === selectedRubricId) || rubrics[0]
+  const [standardsOpen, setStandardsOpen] = useState(true)
+  const [rubricOpen, setRubricOpen] = useState(true)
 
   return (
     <section className="panel chat-panel">
@@ -668,104 +670,136 @@ function ChatWorkspace({
         </div>
 
         <div className="panel side-panel">
-          <div className="panel-header">
-            <h3>Standards</h3>
-            <div className="badge">
-              {selectedStandardsCount}{' '}
-              {selectedStandardsCount === 1 ? 'standard selected' : 'standards selected'}
-            </div>
-          </div>
-          <div className="input-group">
-            <label>Grade (K-12)</label>
-            <select
-              className="input"
-              value={selectedGrade}
-              onChange={(e) => onGradeChange(e.target.value)}
+          <div className="panel-header collapsible-header">
+            <button
+              className="collapse-toggle"
+              type="button"
+              aria-expanded={standardsOpen}
+              onClick={() => setStandardsOpen((open) => !open)}
             >
-              {gradeOptions.map((grade) => (
-                <option key={grade.value} value={grade.value}>
-                  {grade.label}
-                </option>
-              ))}
-            </select>
-            <div className="status">Pick a grade to load its strands and standards.</div>
-          </div>
-          <div className="standards-box">
-            {strandOptions.length ? (
-              strandOptions.map((strand) => (
-                <div key={strand.strand} className="strand-card">
-                  <div className="strand-header">
-                    <label className="strand-toggle">
-                      <input
-                        type="checkbox"
-                        checked={strand.checked}
-                        onChange={() => onToggleStrand(strand.strand)}
-                      />
-                      <div>
-                        <div className="strand-name">
-                          {strandLabels[strand.strand] ?? strand.strand}
-                          <span className="strand-code">{strand.strand}</span>
-                        </div>
-                        <div className="status">
-                          {strand.checked
-                            ? 'All checked standards below will be sent.'
-                            : 'Check to include this strand, then deselect any standards you do not need.'}
-                        </div>
-                      </div>
-                    </label>
-                    <span className="pill secondary">{strand.standards.length} standards</span>
-                  </div>
-                  <div className="standard-list">
-                    {strand.standards.map((std) => (
-                      <label
-                        key={std.code}
-                        className={`standard-item ${strand.checked ? '' : 'disabled'}`}
-                      >
-                        <input
-                          type="checkbox"
-                          disabled={!strand.checked}
-                          checked={strand.checked && std.checked}
-                          onChange={() => onToggleStandard(strand.strand, std.code)}
-                        />
-                        <div>
-                          <div className="standard-code">{std.code}</div>
-                          <div className="standard-description">{std.description}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+              <div className="collapse-left">
+                <span className="title">Standards</span>
+                <div className="badge">
+                  {selectedStandardsCount}{' '}
+                  {selectedStandardsCount === 1 ? 'standard selected' : 'standards selected'}
                 </div>
-              ))
-            ) : (
-              <p className="muted">No standards available for this grade.</p>
-            )}
+              </div>
+              <span className={`chevron ${standardsOpen ? 'open' : ''}`} aria-hidden="true">
+                ▾
+              </span>
+            </button>
           </div>
-
-          <div className="panel-header section-divider">
-            <h3>Rubric</h3>
-            <div className="badge">Rubrics {rubrics.length}</div>
-          </div>
-          <div className="input-group">
-            <label>Pick a rubric</label>
-            <select
-              className="input"
-              value={selectedRubricId}
-              onChange={(e) => onRubricChange(e.target.value)}
-            >
-              {rubrics.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-            <div className="status">{selectedRubric?.description}</div>
-          </div>
-          <div className="upload-box">
-            <div className="muted">
-              Tip: switch rubrics without losing your chat history. The selected rubric will be sent
-              with the essay to the AI grader.
+          {standardsOpen && (
+            <div className="collapse-body">
+              <div className="input-group">
+                <label>Grade (K-12)</label>
+                <select
+                  className="input"
+                  value={selectedGrade}
+                  onChange={(e) => onGradeChange(e.target.value)}
+                >
+                  {gradeOptions.map((grade) => (
+                    <option key={grade.value} value={grade.value}>
+                      {grade.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="status">Pick a grade to load its strands and standards.</div>
+              </div>
+              <div className="standards-box">
+                {strandOptions.length ? (
+                  strandOptions.map((strand) => (
+                    <div key={strand.strand} className="strand-card">
+                      <div className="strand-header">
+                        <label className="strand-toggle">
+                          <input
+                            type="checkbox"
+                            checked={strand.checked}
+                            onChange={() => onToggleStrand(strand.strand)}
+                          />
+                          <div>
+                            <div className="strand-name">
+                              {strandLabels[strand.strand] ?? strand.strand}
+                              <span className="strand-code">{strand.strand}</span>
+                            </div>
+                            <div className="status">
+                              {strand.checked
+                                ? 'All checked standards below will be sent.'
+                                : 'Check to include this strand, then deselect any standards you do not need.'}
+                            </div>
+                          </div>
+                        </label>
+                        <span className="pill secondary">{strand.standards.length} standards</span>
+                      </div>
+                      <div className="standard-list">
+                        {strand.standards.map((std) => (
+                          <label
+                            key={std.code}
+                            className={`standard-item ${strand.checked ? '' : 'disabled'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={!strand.checked}
+                              checked={strand.checked && std.checked}
+                              onChange={() => onToggleStandard(strand.strand, std.code)}
+                            />
+                            <div>
+                              <div className="standard-code">{std.code}</div>
+                              <div className="standard-description">{std.description}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">No standards available for this grade.</p>
+                )}
+              </div>
             </div>
+          )}
+
+          <div className="panel-header section-divider collapsible-header">
+            <button
+              className="collapse-toggle"
+              type="button"
+              aria-expanded={rubricOpen}
+              onClick={() => setRubricOpen((open) => !open)}
+            >
+              <div className="collapse-left">
+                <span className="title">Rubric</span>
+                <div className="badge">Rubrics {rubrics.length}</div>
+              </div>
+              <span className={`chevron ${rubricOpen ? 'open' : ''}`} aria-hidden="true">
+                ▾
+              </span>
+            </button>
           </div>
+          {rubricOpen && (
+            <div className="collapse-body">
+              <div className="input-group">
+                <label>Pick a rubric</label>
+                <select
+                  className="input"
+                  value={selectedRubricId}
+                  onChange={(e) => onRubricChange(e.target.value)}
+                >
+                  {rubrics.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="status">{selectedRubric?.description}</div>
+              </div>
+              <div className="upload-box">
+                <div className="muted">
+                  Tip: switch rubrics without losing your chat history. The selected rubric will be
+                  sent with the essay to the AI grader.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
